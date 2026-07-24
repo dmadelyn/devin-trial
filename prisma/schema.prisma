@@ -1,0 +1,40 @@
+// Prisma + SQLite: no native enums or array columns.
+// - status / action are stored as strings and validated in code (see src/lib/constants.ts).
+// - riskFlags is a JSON-encoded string[] and validated in code.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Application {
+  id             String     @id @default(cuid())
+  applicantName  String
+  dob            DateTime
+  mockDocumentId String
+  address        String
+  riskFlags      String     @default("[]") // JSON-encoded string[]
+  status         String     @default("pending") // pending | approved | rejected
+  submittedAt    DateTime   @default(now())
+  auditLogs      AuditLog[]
+
+  @@index([status])
+}
+
+// Append-only audit trail. Rows are only ever inserted, never updated or deleted.
+model AuditLog {
+  id            String      @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id])
+  actor         String
+  action        String // approve | reject
+  fromStatus    String
+  toStatus      String
+  reason        String?
+  createdAt     DateTime    @default(now())
+
+  @@index([createdAt])
+}

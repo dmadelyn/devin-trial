@@ -1,0 +1,294 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useRole } from "@/lib/roleContext";
+import { STATUSES } from "@/lib/constants";
+import type { ApplicationDTO } from "@/lib/serialize";
+import { formatDate } from "@/lib/format";
+
+type Filter = "all" | (typeof STATUSES)[number];
+
+export default function QueuePage() {
+  const { role, apiFetch } = useRole();
+  const [filter, setFilter] = useState<Filter>("all");
+  const [apps, setApps] = useState<ApplicationDTO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const qs = filter === "all" ? "" : `?status=${filter}`;
+    const res = await apiFetch(`/api/applications${qs}`);
+    const data = await res.json();
+    setApps(data.applications ?? []);
+    setLoading(false);
+  }, [filter, apiFetch]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const onDecided = (updated: ApplicationDTO) => {
+    setApps((prev) =>
+      prev.map((a) => (a.id === updated.id ? updated : a))
+    );
+  };
+
+  return (
+    <div>
+      <h1>Review Queue</h1>
+      <p className="subtitle">
+        Applications that automated verification could not clear.
+      </p>
+
+      <div className="panel">
+        <div className="toolbar">
+          <label htmlFor="status">Status</label>
+          <select
+            id="status"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as Filter)}
+          >
+            <option value="all">All</option>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s[0].toUpperCase() + s.slice(1)}
+              </option>
+            ))}
+          </select>
+          <span className="spacer" />
+          <span className="muted">{apps.length} shown</span>
+        </div>
+
+        {loading ? (
+          <div className="empty">Loading…</div>
+        ) : apps.length === 0 ? (
+          <div className="empty">No applications match this filter.</div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Applicant</th>
+                <th>Submitted</th>
+                <th>Risk Flags</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {apps.map((app) => (
+                <ApplicationRow
+                  key={app.id}
+                  app={app}
+                  expanded={expandedId === app.id}
+                  canReview={role === "reviewer"}
+                  onToggle={() =>
+                    setExpandedId((id) => (id === app.id ? null : app.id))
+                  }
+                  onDecided={onDecided}
+                />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ApplicationRow({
+  app,
+  expanded,
+  canReview,
+  onToggle,
+  onDecided,
+}: {
+  app: ApplicationDTO;
+  expanded: boolean;
+  canReview: boolean;
+  onToggle: () => void;
+  onDecided: (updated: ApplicationDTO) => void;
+}) {
+  return (
+    <>
+      <tr className="row-clickable" onClick={onToggle}>
+        <td>
+          <strong>{app.applicantName}</strong>
+        </td>
+        <td>{formatDate(app.submittedAt)}</td>
+        <td>
+          {app.riskFlags.length === 0 ? (
+            <span className="muted">—</span>
+          ) : (
+            <div className="flags">
+              {app.riskFlags.map((f) => (
+                <span key={f} className="flag">
+                  {f}
+                </span>
+              ))}
+            </div>
+          )}
+        </td>
+        <td>
+          <span className={`badge ${app.status}`}>{app.status}</span>
+        </td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={4} style={{ padding: 0 }}>
+            <DetailPanel
+              app={app}
+              canReview={canReview}
+              onDecided={onDecided}
+            />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function DetailPanel({
+  app,
+  canReview,
+  onDecided,
+}: {
+  app: ApplicationDTO;
+  canReview: boolean;
+  onDecided: (updated: ApplicationDTO) => void;
+}) {
+  const { apiFetch } = useRole();
+  const [reason, setReason] = useState("");
+  const [showReject, setShowReject] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const decide = async (action: "approve" | "reject") => {
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await apiFetch(`/api/applications/${app.id}/decision`, {
+        method: "POST",
+        body: JSON.stringify(
+          action === "reject" ? { action, reason } : { action }
+        ),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Something went wrong.");
+        return;
+      }
+      onDecided(data.application);
+      setShowReject(false);
+      setReason("");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const isPending = app.status === "pending";
+
+  return (
+    <div className="detail">
+      <div className="detail-grid">
+        <Field label="Applicant name" value={app.applicantName} />
+        <Field label="Date of birth" value={formatDate(app.dob)} />
+        <Field label="Document ID" value={app.mockDocumentId} />
+        <Field label="Submitted" value={formatDate(app.submittedAt)} />
+        <Field label="Address" value={app.address} />
+        <Field
+          label="Status"
+          value={<span className={`badge ${app.status}`}>{app.status}</span>}
+        />
+        <div>
+          <div className="label">Risk flags</div>
+          <div className="value">
+            {app.riskFlags.length === 0 ? (
+              <span className="muted">None</span>
+            ) : (
+              <div className="flags">
+                {app.riskFlags.map((f) => (
+                  <span key={f} className="flag">
+                    {f}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {!isPending ? (
+        <p className="muted">
+          This application has already been {app.status}. No further action.
+        </p>
+      ) : !canReview ? (
+        <p className="muted">
+          You are in read-only (Viewer) mode. Switch to Reviewer to take action.
+        </p>
+      ) : (
+        <div className="actions">
+          <button
+            className="btn approve"
+            disabled={busy}
+            onClick={() => decide("approve")}
+          >
+            Approve
+          </button>
+          {!showReject ? (
+            <button
+              className="btn reject"
+              disabled={busy}
+              onClick={() => setShowReject(true)}
+            >
+              Reject…
+            </button>
+          ) : (
+            <div className="reject-box">
+              <textarea
+                placeholder="Reason for rejection (required)"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+              <div className="actions">
+                <button
+                  className="btn reject"
+                  disabled={busy}
+                  onClick={() => decide("reject")}
+                >
+                  Confirm reject
+                </button>
+                <button
+                  className="btn"
+                  disabled={busy}
+                  onClick={() => {
+                    setShowReject(false);
+                    setReason("");
+                    setError(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="label">{label}</div>
+      <div className="value">{value}</div>
+    </div>
+  );
+}
