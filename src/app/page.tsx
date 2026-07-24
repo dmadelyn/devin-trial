@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRole } from "@/lib/roleContext";
 import { STATUSES } from "@/lib/constants";
 import type { ApplicationDTO } from "@/lib/serialize";
@@ -20,6 +20,7 @@ export default function QueuePage() {
   const [apps, setApps] = useState<ApplicationDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
   // Restore the last-used filter so it survives navigation to other pages.
   useEffect(() => {
@@ -33,10 +34,14 @@ export default function QueuePage() {
   }, []);
 
   const load = useCallback(async () => {
+    // Guard against out-of-order responses: only the latest request applies.
+    // (On mount the default "all" fetch and the restored filter's fetch race.)
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     const qs = filter === "all" ? "" : `?status=${filter}`;
     const res = await apiFetch(`/api/applications${qs}`);
     const data = await res.json();
+    if (requestId !== requestIdRef.current) return;
     setApps(data.applications ?? []);
     setLoading(false);
   }, [filter, apiFetch]);
