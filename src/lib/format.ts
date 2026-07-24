@@ -1,8 +1,11 @@
 export function formatDate(iso: string): string {
+  // Date-only values are stored at midnight UTC; format in UTC so they don't
+  // shift a day earlier for reviewers in UTC-negative time zones.
   return new Date(iso).toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
 }
 
