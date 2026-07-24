@@ -8,12 +8,29 @@ import { formatDate } from "@/lib/format";
 
 type Filter = "all" | (typeof STATUSES)[number];
 
+const FILTER_STORAGE_KEY = "kyc-queue-filter";
+
+function isFilter(v: string | null): v is Filter {
+  return v === "all" || (STATUSES as readonly string[]).includes(v ?? "");
+}
+
 export default function QueuePage() {
   const { role, apiFetch } = useRole();
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilterState] = useState<Filter>("all");
   const [apps, setApps] = useState<ApplicationDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Restore the last-used filter so it survives navigation to other pages.
+  useEffect(() => {
+    const saved = window.localStorage.getItem(FILTER_STORAGE_KEY);
+    if (isFilter(saved)) setFilterState(saved);
+  }, []);
+
+  const setFilter = useCallback((f: Filter) => {
+    setFilterState(f);
+    window.localStorage.setItem(FILTER_STORAGE_KEY, f);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -28,10 +45,11 @@ export default function QueuePage() {
     load();
   }, [load]);
 
-  const onDecided = (updated: ApplicationDTO) => {
-    setApps((prev) =>
-      prev.map((a) => (a.id === updated.id ? updated : a))
-    );
+  // Refetch after a decision so rows that no longer match the active filter
+  // drop out (and statuses stay in sync with the server).
+  const onDecided = () => {
+    setExpandedId(null);
+    load();
   };
 
   return (
@@ -106,7 +124,7 @@ function ApplicationRow({
   expanded: boolean;
   canReview: boolean;
   onToggle: () => void;
-  onDecided: (updated: ApplicationDTO) => void;
+  onDecided: () => void;
 }) {
   return (
     <>
@@ -154,7 +172,7 @@ function DetailPanel({
 }: {
   app: ApplicationDTO;
   canReview: boolean;
-  onDecided: (updated: ApplicationDTO) => void;
+  onDecided: () => void;
 }) {
   const { apiFetch } = useRole();
   const [reason, setReason] = useState("");
@@ -177,9 +195,9 @@ function DetailPanel({
         setError(data.error ?? "Something went wrong.");
         return;
       }
-      onDecided(data.application);
       setShowReject(false);
       setReason("");
+      onDecided();
     } finally {
       setBusy(false);
     }
