@@ -14,6 +14,7 @@ export interface ApplicationDTO {
 
 export interface AuditLogDTO {
   id: string;
+  seq: number;
   applicationId: string;
   applicantName?: string;
   actor: string;
@@ -22,6 +23,8 @@ export interface AuditLogDTO {
   toStatus: string;
   reason: string | null;
   createdAt: string;
+  prevHash: string | null;
+  rowHash: string;
 }
 
 function parseRiskFlags(raw: string): RiskFlag[] {
@@ -55,6 +58,7 @@ export function serializeAuditLog(
 ): AuditLogDTO {
   return {
     id: log.id,
+    seq: log.seq,
     applicationId: log.applicationId,
     applicantName: log.application?.applicantName,
     actor: log.actor,
@@ -63,5 +67,7 @@ export function serializeAuditLog(
     toStatus: log.toStatus,
     reason: log.reason,
     createdAt: log.createdAt.toISOString(),
+    prevHash: log.prevHash,
+    rowHash: log.rowHash,
   };
 }

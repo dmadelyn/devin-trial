@@ -24,9 +24,12 @@ model Application {
   @@index([status])
 }
 
-// Append-only audit trail. Rows are only ever inserted, never updated or deleted.
+// Append-only, hash-chained audit trail. Rows are only ever inserted, never
+// updated or deleted. Each row commits to the previous row's hash, so any
+// edit/reorder/delete breaks the chain and is detectable (see src/lib/hashchain.ts).
 model AuditLog {
   id            String      @id @default(cuid())
+  seq           Int         @unique // monotonic chain position (assigned in the decision transaction)
   applicationId String
   application   Application @relation(fields: [applicationId], references: [id])
   actor         String
@@ -36,5 +39,10 @@ model AuditLog {
   reason        String?
   createdAt     DateTime    @default(now())
 
+  // Tamper-evidence: rowHash = sha256(prevHash + canonical(row content)).
+  prevHash      String? // rowHash of the preceding entry; null for the genesis row
+  rowHash       String // this row's chain hash
+
   @@index([createdAt])
+  @@index([seq])
 }

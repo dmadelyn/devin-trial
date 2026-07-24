@@ -233,6 +233,32 @@ button.btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+button.btn {
+  background: var(--blue, #2563eb);
+  color: #fff;
+}
+.verify-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.verify-ok {
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+}
+.verify-bad {
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 600;
+}
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
 .btn.approve {
   background: var(--green);
   color: #fff;

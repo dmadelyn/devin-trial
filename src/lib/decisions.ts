@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { Action, ACTION_TO_STATUS } from "./constants";
 import type { Actor } from "./auth";
+import { computeRowHash } from "./hashchain";
 import { Prisma } from "@prisma/client";
 
 export class DecisionError extends Error {
@@ -19,6 +20,10 @@ export class DecisionError extends Error {
 // recordDecision applies a status change AND writes exactly one audit row
 // inside a single transaction, so the two can never diverge. The audit table
 // is insert-only; this is the only place status transitions happen.
+//
+// The audit row is hash-chained to its predecessor (see src/lib/hashchain.ts):
+// seq/prevHash/rowHash are computed inside the transaction and written as part
+// of the single insert (never a follow-up update), keeping the table insert-only.
 // ---------------------------------------------------------------------------
 export async function recordDecision(
   applicationId: string,
@@ -56,14 +61,35 @@ export async function recordDecision(
       data: { status: toStatus },
     });
 
+    // Extend the hash chain: read the current tip (serialized by the txn), then
+    // compute this row's position and hash before the single insert.
+    const tip = await tx.auditLog.findFirst({ orderBy: { seq: "desc" } });
+    const seq = tip ? tip.seq + 1 : 1;
+    const prevHash = tip ? tip.rowHash : null;
+    const createdAt = new Date();
+    const rowHash = computeRowHash(prevHash, {
+      seq,
+      applicationId,
+      actor: actor.name,
+      action,
+      fromStatus,
+      toStatus,
+      reason: trimmedReason,
+      createdAt,
+    });
+
     const audit = await tx.auditLog.create({
       data: {
+        seq,
         applicationId,
         actor: actor.name,
         action,
         fromStatus,
         toStatus,
         reason: trimmedReason,
+        createdAt,
+        prevHash,
+        rowHash,
       },
     });
 
