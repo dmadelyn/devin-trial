@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRole } from "@/lib/roleContext";
-import { STATUSES } from "@/lib/constants";
+import { STATUSES, RISK_FLAGS, RiskFlag } from "@/lib/constants";
 import type { ApplicationDTO } from "@/lib/serialize";
 import { formatDate } from "@/lib/format";
 
@@ -20,6 +20,7 @@ export default function QueuePage() {
   const [apps, setApps] = useState<ApplicationDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showNew, setShowNew] = useState(false);
   const requestIdRef = useRef(0);
 
   // Restore the last-used filter so it survives navigation to other pages.
@@ -57,6 +58,16 @@ export default function QueuePage() {
     load();
   };
 
+  // After ingesting a case, show the Pending view so it's visible, then refetch.
+  const onCreated = () => {
+    setShowNew(false);
+    if (filter !== "all" && filter !== "pending") {
+      setFilter("pending");
+    } else {
+      load();
+    }
+  };
+
   return (
     <div>
       <h1>Review Queue</h1>
@@ -81,7 +92,16 @@ export default function QueuePage() {
           </select>
           <span className="spacer" />
           <span className="muted">{apps.length} shown</span>
+          <button
+            className="btn"
+            onClick={() => setShowNew((v) => !v)}
+            style={{ marginLeft: 12 }}
+          >
+            {showNew ? "Cancel" : "New application"}
+          </button>
         </div>
+
+        {showNew && <NewApplicationForm onCreated={onCreated} />}
 
         {loading ? (
           <div className="empty">Loading…</div>
@@ -298,6 +318,112 @@ function DetailPanel({
       )}
       {error && <p className="error">{error}</p>}
     </div>
+  );
+}
+
+function NewApplicationForm({ onCreated }: { onCreated: () => void }) {
+  const { apiFetch } = useRole();
+  const [applicantName, setApplicantName] = useState("");
+  const [dob, setDob] = useState("");
+  const [address, setAddress] = useState("");
+  const [mockDocumentId, setMockDocumentId] = useState("");
+  const [flags, setFlags] = useState<RiskFlag[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const toggleFlag = (f: RiskFlag) =>
+    setFlags((cur) =>
+      cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f]
+    );
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await apiFetch("/api/applications", {
+        method: "POST",
+        body: JSON.stringify({
+          applicantName,
+          dob,
+          address,
+          mockDocumentId: mockDocumentId || undefined,
+          riskFlags: flags,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Something went wrong.");
+        return;
+      }
+      onCreated();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="new-form" onSubmit={submit}>
+      <p className="muted">
+        Simulates the upstream verification vendor pushing a case it couldn&apos;t
+        clear. Creates a <strong>pending</strong> application.
+      </p>
+      <div className="new-grid">
+        <label>
+          <span>Applicant name</span>
+          <input
+            value={applicantName}
+            onChange={(e) => setApplicantName(e.target.value)}
+            placeholder="Jordan Rivera"
+          />
+        </label>
+        <label>
+          <span>Date of birth</span>
+          <input
+            type="date"
+            value={dob}
+            onChange={(e) => setDob(e.target.value)}
+          />
+        </label>
+        <label>
+          <span>Address</span>
+          <input
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="1 Main St, Somewhere, CA"
+          />
+        </label>
+        <label>
+          <span>Document ID (optional)</span>
+          <input
+            value={mockDocumentId}
+            onChange={(e) => setMockDocumentId(e.target.value)}
+            placeholder="auto-generated if blank"
+          />
+        </label>
+      </div>
+      <div className="new-flags">
+        <span className="label">Risk flags</span>
+        <div className="flags">
+          {RISK_FLAGS.map((f) => (
+            <label key={f} className="flag-check">
+              <input
+                type="checkbox"
+                checked={flags.includes(f)}
+                onChange={() => toggleFlag(f)}
+              />
+              {f}
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className="actions">
+        <button className="btn approve" type="submit" disabled={busy}>
+          {busy ? "Adding…" : "Add to queue"}
+        </button>
+      </div>
+      {error && <p className="error">{error}</p>}
+    </form>
   );
 }
 
