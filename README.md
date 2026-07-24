@@ -34,6 +34,8 @@ Other scripts: `npm run lint`, `npm run typecheck`, `npm run build`.
 
 - **Queue** (`/`) — table of applications (applicant, submitted date, risk flags,
   status) with a status filter. Click a row to expand its full detail inline.
+- **New application** (queue toolbar) — a form that pushes a case into the queue
+  as `pending`. This is a prototype simulator for upstream ingestion (see below).
 - **Decision** — Reviewers can Approve or Reject a *pending* application. Reject
   requires a reason. Each decision updates the status **and** writes exactly one
   audit record inside a single transaction.
@@ -91,6 +93,23 @@ Routes never read identity headers directly — they ask for a verified `Session
 `withAuthorization` is unchanged by the swap: it returns **401** (no session),
 **403** (wrong role), or **503** (SSO selected but not configured).
 
+### Ingestion seam (how cases enter the queue)
+
+In production, cases arrive from the **upstream automated verification / IDV
+vendor** — when it *can't* auto-clear someone, it creates a `pending`
+`Application` (with risk flags) via a webhook/endpoint. `POST /api/applications`
+is that seam, and the **New application** form on the queue is a prototype
+simulator that calls it so you can push cases in without reseeding.
+
+- New cases always enter as `status: "pending"`.
+- Ingestion **does not** write an audit row — the audit trail records reviewer
+  *decisions*, not the case's arrival. `recordDecision()` remains the only code
+  path that appends to `AuditLog`.
+- Validation (`src/lib/applications.ts`): `applicantName`, `dob`, and `address`
+  are required; `mockDocumentId` (auto-generated if omitted) and `riskFlags`
+  (validated against the allowed set, de-duplicated) are optional. Invalid input
+  → **400**; a valid create → **201** with the new application.
+
 ### Data model (`prisma/schema.prisma`)
 
 - **`Application`** — applicant name, DOB, mock document ID, address, risk flags,
@@ -116,6 +135,7 @@ Okta provider seam exists precisely to make that swap a one-function change.
 | Method | Path                               | Role      | Notes                                  |
 | ------ | ---------------------------------- | --------- | -------------------------------------- |
 | GET    | `/api/applications?status=`        | any       | Optional `status` filter               |
+| POST   | `/api/applications`                | any       | Ingest a case; body `{applicantName, dob, address, mockDocumentId?, riskFlags?}` → 201 / 400 |
 | POST   | `/api/applications/:id/decision`   | reviewer  | Body `{action, reason?}`; 403 for viewer |
 | GET    | `/api/audit`                       | any       | Newest-first audit records             |
 | GET    | `/api/audit/verify`                | any       | Recompute hash chain; integrity report |
