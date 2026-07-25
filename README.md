@@ -165,6 +165,17 @@ curl -s http://localhost:3000/api/audit/verify
 # -> {"valid":false,"brokenAt":<seq>,"reason":"rowHash does not match ..."}
 ```
 
+To produce that second case, `scripts/tamper-audit.mjs` edits one audit row with raw SQL,
+bypassing the app (which has no update or delete path of its own):
+
+```bash
+node scripts/tamper-audit.mjs      # alters the first row; pass a seq to pick another
+npm run db:seed                    # restores a clean chain
+```
+
+The altered row still renders normally in the Audit Log. Only **Verify integrity** reveals it,
+naming the exact seq.
+
 ### Switch to Okta SSO
 
 ```bash
