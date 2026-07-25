@@ -151,6 +151,11 @@ curl -i -X POST http://localhost:3000/api/applications/<id>/decision \
 # -> HTTP/1.1 403 Forbidden  {"error":"Forbidden: 'reviewer' role required"}
 ```
 
+For a browser version of the same check, open
+[`http://localhost:3000/rbac-demo.html`](http://localhost:3000/rbac-demo.html). It sends the
+identical decision request as each role and shows the two status codes side by side (viewer 403,
+reviewer 200), which is easier to read than curl output when demoing.
+
 ### Verify audit-trail integrity
 
 ```bash
@@ -159,6 +164,17 @@ curl -s http://localhost:3000/api/audit/verify
 # After any out-of-band edit to an AuditLog row:
 # -> {"valid":false,"brokenAt":<seq>,"reason":"rowHash does not match ..."}
 ```
+
+To produce that second case, `scripts/tamper-audit.mjs` edits one audit row with raw SQL,
+bypassing the app (which has no update or delete path of its own):
+
+```bash
+node scripts/tamper-audit.mjs      # alters the first row; pass a seq to pick another
+npm run db:seed                    # restores a clean chain
+```
+
+The altered row still renders normally in the Audit Log. Only **Verify integrity** reveals it,
+naming the exact seq.
 
 ### Switch to Okta SSO
 

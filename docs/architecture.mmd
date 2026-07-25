@@ -1,0 +1,57 @@
+flowchart TD
+
+  subgraph client["Client (browser)"]
+    R["Role toggle, dev mode<br/>(self-asserted identity, STUB)"]
+  end
+
+  subgraph app["Next.js app (App Router)"]
+    UI["UI: queue, inline detail,<br/>New application form, audit view"]
+    API["API routes<br/>(server-enforced)"]
+    VERIFY["GET /api/audit/verify"]
+    INGEST["POST /api/applications<br/>(ingestion endpoint)"]
+  end
+
+  subgraph lib["src/lib: reusable governance layer"]
+    SESS["session.ts<br/>getServerSession (SSO attaches here)"]
+    ROLE["auth.ts<br/>withAuthorization (server RBAC)"]
+    DEC["decisions.ts<br/>recordDecision (atomic status + audit)"]
+    HASH["hashchain.ts<br/>computeRowHash, verifyChain"]
+  end
+
+  DB[("SQLite via Prisma<br/>Application, AuditLog(seq, prevHash, rowHash)")]
+
+  R --> UI --> API
+  API --> ROLE
+  ROLE --> SESS
+  API --> DEC
+  DEC --> HASH
+  DEC --> DB
+  ROLE --> DB
+  UI --> INGEST --> DB
+  UI --> VERIFY --> HASH
+  HASH --> DB
+
+  subgraph seam["Wired, stubbed at one function"]
+    OKTA["oktaProvider.verifyOktaSession()<br/>AUTH_MODE=okta returns HTTP 503"]
+  end
+  SESS -. "when AUTH_MODE=okta" .-> OKTA
+
+  subgraph ext["External or future: bought, not built (what Retool bundles)"]
+    IDP["Okta IdP with SCIM"]
+    IDV["IDV vendor<br/>(Persona, Alloy, Socure)"]
+    WORM["Signing, WORM, anchoring<br/>(prevention, non-repudiation)"]
+    PG[("Postgres, persisted")]
+  end
+
+  OKTA -. "verify JWT against JWKS, map claims to role" .-> IDP
+  IDV -. "would POST cases to the ingestion endpoint" .-> INGEST
+  WORM -. "adds prevention on top of detection" .-> HASH
+  PG -. "would replace SQLite" .-> DB
+
+  classDef real fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef stub fill:#fef9c3,stroke:#ca8a04,color:#713f12;
+  classDef cut fill:#f1f5f9,stroke:#94a3b8,color:#475569,stroke-dasharray:5 5;
+
+  class UI,API,VERIFY,INGEST,ROLE,DEC,HASH,SESS,DB real;
+  class R,OKTA stub;
+  class IDP,IDV,WORM,PG cut;
