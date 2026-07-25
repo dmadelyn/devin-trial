@@ -151,6 +151,11 @@ curl -i -X POST http://localhost:3000/api/applications/<id>/decision \
 # -> HTTP/1.1 403 Forbidden  {"error":"Forbidden: 'reviewer' role required"}
 ```
 
+For a browser version of the same check, open
+[`http://localhost:3000/rbac-demo.html`](http://localhost:3000/rbac-demo.html). It sends the
+identical decision request as each role and shows the two status codes side by side (viewer 403,
+reviewer 200), which is easier to read than curl output when demoing.
+
 ### Verify audit-trail integrity
 
 ```bash
