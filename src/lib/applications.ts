@@ -36,6 +36,24 @@ function requireString(v: unknown, field: string): string {
   return v.trim();
 }
 
+// Parse an ISO-8601 date (`YYYY-MM-DD`, optionally followed by a time/offset)
+// to midnight UTC using the calendar date as written, independent of any
+// offset in the input or the server's timezone. Rejects non-existent dates.
+function parseDateOnly(raw: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(raw.trim());
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  if (
+    date.getUTCFullYear() !== y ||
+    date.getUTCMonth() !== mo - 1 ||
+    date.getUTCDate() !== d
+  ) {
+    return null;
+  }
+  return date;
+}
+
 // Validate and normalize a raw request body into a NewApplication.
 export function parseNewApplication(body: unknown): NewApplication {
   const b = (body ?? {}) as Record<string, unknown>;
@@ -44,9 +62,12 @@ export function parseNewApplication(body: unknown): NewApplication {
   const address = requireString(b.address, "address");
 
   const dobRaw = requireString(b.dob, "dob");
-  const dob = new Date(dobRaw);
-  if (Number.isNaN(dob.getTime())) {
-    throw new ValidationError("dob must be a valid date (e.g. 1990-04-12).");
+  const dob = parseDateOnly(dobRaw);
+  if (dob === null) {
+    throw new ValidationError("dob must be a valid YYYY-MM-DD date (e.g. 1990-04-12).");
+  }
+  if (dob.getTime() > Date.now()) {
+    throw new ValidationError("dob cannot be in the future.");
   }
 
   // Optional: auto-generate a mock document id if the caller omits one.
