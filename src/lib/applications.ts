@@ -36,18 +36,22 @@ function requireString(v: unknown, field: string): string {
   return v.trim();
 }
 
-// Parse a date string to midnight UTC, discarding any time/zone component so a
-// DOB submitted as a local datetime can't land on the wrong calendar day.
+// Parse an ISO-8601 date (`YYYY-MM-DD`, optionally followed by a time/offset)
+// to midnight UTC using the calendar date as written, independent of any
+// offset in the input or the server's timezone. Rejects non-existent dates.
 function parseDateOnly(raw: string): Date | null {
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return null;
-  const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
-  if (ymd) {
-    return new Date(Date.UTC(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3])));
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(raw.trim());
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  if (
+    date.getUTCFullYear() !== y ||
+    date.getUTCMonth() !== mo - 1 ||
+    date.getUTCDate() !== d
+  ) {
+    return null;
   }
-  return new Date(
-    Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
-  );
+  return date;
 }
 
 // Validate and normalize a raw request body into a NewApplication.
@@ -60,7 +64,7 @@ export function parseNewApplication(body: unknown): NewApplication {
   const dobRaw = requireString(b.dob, "dob");
   const dob = parseDateOnly(dobRaw);
   if (dob === null) {
-    throw new ValidationError("dob must be a valid date (e.g. 1990-04-12).");
+    throw new ValidationError("dob must be a valid YYYY-MM-DD date (e.g. 1990-04-12).");
   }
   if (dob.getTime() > Date.now()) {
     throw new ValidationError("dob cannot be in the future.");
